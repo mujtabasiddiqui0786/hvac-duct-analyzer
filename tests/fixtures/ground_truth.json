@@ -1,6 +1,6 @@
 {
   "dataset": "testset2",
-  "notes": "Starter manifest for future accuracy benchmarking.",
+  "notes": "Ground truth format for segment-level precision/recall. Populate 'segments' with fully-labeled ducts for true benchmarking.",
   "expected": {
     "min_detected_segments": 1,
     "required_fields": [
@@ -10,5 +10,6 @@
       "length",
       "classification"
     ]
-  }
+  },
+  "segments": []
 }

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Review Queue</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; font-size: 13px; }
+    th { background: #f3f3f3; text-align: left; }
+    .muted { color: #666; margin-bottom: 1rem; }
+    .toolbar { margin-bottom: 1rem; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+    button { background: #1976d2; color: white; border: none; border-radius: 8px; padding: 0.45rem 0.75rem; cursor: pointer; }
+    select, input[type=text] { width: 100%; box-sizing: border-box; padding: 0.35rem; }
+    .ok { color: #0a7d30; }
+    .warn { color: #b54708; }
+  </style>
+</head>
+<body>
+  <h1>Low-confidence Review Queue</h1>
+  <p class="muted">Job {{ job_id }} - {{ rows|length }} items need manual review.</p>
+  <div class="toolbar">
+    <button id="applyBtn">Apply Corrections</button>
+    <span id="status" class="muted"></span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Kind</th>
+        <th>Confidence</th>
+        <th>Dimension</th>
+        <th>Classification</th>
+        <th>Mark Reviewed</th>
+        <th>Reason</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr data-id="{{ row.id }}">
+        <td class="id">{{ row.id }}</td>
+        <td>{{ row.kind }}</td>
+        <td>{{ "%.3f"|format(row.confidence) }}</td>
+        <td>
+          {% if row.dimensions %}
+            {% if row.dimensions.shape == "round" %}
+              {{ row.dimensions.diameter_in }}ø
+            {% else %}
+              {{ row.dimensions.width_in }}x{{ row.dimensions.height_in }}
+            {% endif %}
+          {% else %}
+            -
+          {% endif %}
+        </td>
+        <td>
+          <select class="classification">
+            <option value="unclassified" {% if row.classification == "unclassified" %}selected{% endif %}>unclassified</option>
+            <option value="supply" {% if row.classification == "supply" %}selected{% endif %}>supply</option>
+            <option value="return" {% if row.classification == "return" %}selected{% endif %}>return</option>
+            <option value="exhaust" {% if row.classification == "exhaust" %}selected{% endif %}>exhaust</option>
+          </select>
+        </td>
+        <td>
+          <input class="reviewed" type="checkbox" {% if not row.review_required %}checked{% endif %} />
+        </td>
+        <td>
+          <input class="reason" type="text" value="{{ row.review_reason or '' }}" />
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <script>
+    const btn = document.getElementById("applyBtn");
+    const status = document.getElementById("status");
+    btn.addEventListener("click", async () => {
+      const rows = [...document.querySelectorAll("tbody tr")];
+      const corrections = rows.map((row) => {
+        const id = row.querySelector(".id").textContent.trim();
+        const classification = row.querySelector(".classification").value;
+        const reviewed = row.querySelector(".reviewed").checked;
+        const reason = row.querySelector(".reason").value.trim();
+        return {
+          id,
+          classification,
+          review_required: !reviewed,
+          review_reason: reason || (reviewed ? "approved manually" : "needs manual review"),
+        };
+      });
+      status.textContent = "Applying corrections...";
+      status.className = "muted";
+      const res = await fetch(`/jobs/{{ job_id }}/corrections`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({corrections}),
+      });
+      if (!res.ok) {
+        status.textContent = "Failed to apply corrections.";
+        status.className = "warn";
+        return;
+      }
+      const data = await res.json();
+      status.textContent = `Applied ${data.applied} corrections. Remaining review queue: ${data.review_queue_count}`;
+      status.className = "ok";
+    });
+  </script>
+</body>
+</html>

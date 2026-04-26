@@ -72,7 +72,21 @@ def write_csv_report(report: AnnotationReport, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fp:
         writer = csv.writer(fp)
-        writer.writerow(["id", "kind", "classification", "dimension", "length_ft_in", "confidence"])
+        writer.writerow(
+            [
+                "id",
+                "kind",
+                "classification",
+                "dimension",
+                "length_ft_in",
+                "confidence",
+                "geom_score",
+                "ocr_score",
+                "consistency_score",
+                "review_required",
+                "review_reason",
+            ]
+        )
         for seg in report.segments:
             if seg.dimensions is None:
                 dim = ""
@@ -83,4 +97,18 @@ def write_csv_report(report: AnnotationReport, path: Path) -> None:
             length = ""
             if seg.length:
                 length = f"{seg.length.feet}'-{seg.length.inches}\""
-            writer.writerow([seg.id, seg.kind.value, seg.classification.value, dim, length, f"{seg.confidence:.3f}"])
+            writer.writerow(
+                [
+                    seg.id,
+                    seg.kind.value,
+                    seg.classification.value,
+                    dim,
+                    length,
+                    f"{seg.confidence:.3f}",
+                    f"{seg.geom_score:.3f}",
+                    f"{seg.ocr_score:.3f}",
+                    f"{seg.consistency_score:.3f}",
+                    str(seg.review_required),
+                    seg.review_reason or "",
+                ]
+            )

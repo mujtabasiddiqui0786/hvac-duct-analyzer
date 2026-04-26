@@ -27,6 +27,7 @@ class OCRToken:
 class OCRReader:
     def __init__(self) -> None:
         self._reader = None
+        self._fallback = None
         self._disabled = False
 
     def _ensure_reader(self) -> None:
@@ -39,7 +40,16 @@ class OCRReader:
                 self._reader = easyocr.Reader(["en"], gpu=False)
             except ModuleNotFoundError as exc:
                 # Some Python builds miss stdlib extension modules like _lzma.
-                # In that case we skip OCR instead of failing the full pipeline.
+                # Try pytesseract fallback before disabling OCR.
+                if "_lzma" in str(exc):
+                    try:
+                        import pytesseract  # type: ignore
+
+                        self._fallback = pytesseract
+                        logger.warning("EasyOCR unavailable (%s), using pytesseract fallback.", exc)
+                        return
+                    except Exception:
+                        pass
                 self._disabled = True
                 logger.warning("OCR disabled due to missing module dependency: %s", exc)
             except Exception as exc:
@@ -48,8 +58,20 @@ class OCRReader:
 
     def read(self, image: np.ndarray) -> list[OCRToken]:
         self._ensure_reader()
-        if self._reader is None:
+        if self._reader is None and self._fallback is None:
             return []
+        if self._reader is None and self._fallback is not None:
+            text = self._fallback.image_to_data(image, output_type=self._fallback.Output.DICT)
+            out: list[OCRToken] = []
+            n = len(text["text"])
+            for i in range(n):
+                token = str(text["text"][i]).strip()
+                if not token:
+                    continue
+                conf = float(text["conf"][i]) / 100.0 if str(text["conf"][i]).strip() not in {"-1", ""} else 0.0
+                x, y, w, h = text["left"][i], text["top"][i], text["width"][i], text["height"][i]
+                out.append(OCRToken(text=token, confidence=max(0.0, min(1.0, conf)), bbox=(x, y, x + w, y + h)))
+            return out
         out: list[OCRToken] = []
         for item in self._reader.readtext(image):
             poly, txt, conf = item
