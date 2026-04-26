@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import Iterable
@@ -13,6 +14,7 @@ RECT_RE = re.compile(r"^\s*(\d{1,2})\s*[\"”]?\s*[xX×]\s*(\d{1,2})\s*[\"”]?\
 ROUND_RE = re.compile(r"^\s*(\d{1,2})\s*[\"”]?\s*[øØ⌀⏀]\s*$|^\s*(\d{1,2})\s*\"?\s*DIA\.?\s*$", re.IGNORECASE)
 ALLOWED_SIZE = set(range(4, 61))
 CONFUSIONS = str.maketrans({"O": "0", "o": "0", "I": "1", "l": "1", "S": "5", "Z": "2", "B": "8"})
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -25,15 +27,29 @@ class OCRToken:
 class OCRReader:
     def __init__(self) -> None:
         self._reader = None
+        self._disabled = False
 
     def _ensure_reader(self) -> None:
+        if self._disabled:
+            return
         if self._reader is None:
-            import easyocr
+            try:
+                import easyocr
 
-            self._reader = easyocr.Reader(["en"], gpu=False)
+                self._reader = easyocr.Reader(["en"], gpu=False)
+            except ModuleNotFoundError as exc:
+                # Some Python builds miss stdlib extension modules like _lzma.
+                # In that case we skip OCR instead of failing the full pipeline.
+                self._disabled = True
+                logger.warning("OCR disabled due to missing module dependency: %s", exc)
+            except Exception as exc:
+                self._disabled = True
+                logger.warning("OCR disabled due to initialization error: %s", exc)
 
     def read(self, image: np.ndarray) -> list[OCRToken]:
         self._ensure_reader()
+        if self._reader is None:
+            return []
         out: list[OCRToken] = []
         for item in self._reader.readtext(image):
             poly, txt, conf = item
