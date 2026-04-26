@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HVAC Duct Annotator</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; max-width: 720px; }
+    .box { border: 2px dashed #5d7; padding: 1.5rem; border-radius: 12px; }
+    .muted { color: #666; }
+    a { margin-right: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>HVAC Duct Annotator</h1>
+  <p class="muted">Upload a mechanical drawing PDF and download annotated output plus reports.</p>
+  <div class="box">
+    <input id="file" type="file" accept="application/pdf" />
+    <button id="submit">Start</button>
+  </div>
+  <p id="status"></p>
+  <div id="links"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

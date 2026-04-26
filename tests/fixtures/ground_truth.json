@@ -1,0 +1,14 @@
+{
+  "dataset": "testset2",
+  "notes": "Starter manifest for future accuracy benchmarking.",
+  "expected": {
+    "min_detected_segments": 1,
+    "required_fields": [
+      "id",
+      "kind",
+      "dimensions",
+      "length",
+      "classification"
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Tests / tooling
+.pytest_cache/
+.coverage
+htmlcov/
+
+# App runtime
+.hvac_jobs/
+output/
+
+# IDE / OS
+.DS_Store
+.idea/
+*.swp
+*.swo
+
+# Large local crops (optional dev artifacts)
+crop_*.png
+page-*.png
