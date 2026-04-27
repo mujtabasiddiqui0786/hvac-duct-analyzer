@@ -31,7 +31,12 @@ def _calibrate_from_segments(
     segments: list[DuctSegment],
     px_per_pdf_point: float,
 ) -> float | None:
-    samples: list[float] = []
+    """
+    Regress inches_per_pixel from labelled segments.  Returns None when the
+    sample set is too homogeneous (e.g. dimension propagation floods all
+    segments with a single label), because that biases the regression badly.
+    """
+    samples: list[tuple[float, float]] = []  # (expected_in, px_width)
     z = px_per_pdf_point
     for seg in segments:
         if seg.dimensions is None or not seg.pixel_width:
@@ -45,10 +50,16 @@ def _calibrate_from_segments(
         px_width = float(seg.pixel_width) * z
         if px_width <= 0:
             continue
-        samples.append(expected_in / px_width)
+        samples.append((expected_in, px_width))
     if len(samples) < 4:
         return None
-    return statistics.median(samples)
+    # Require at least two distinct physical sizes to trust the calibration.
+    # When dimension propagation gives all segments the same size, the
+    # regression is unreliable — fall back to the OCR/default scale instead.
+    distinct_sizes = {round(e, 1) for e, _ in samples}
+    if len(distinct_sizes) < 2:
+        return None
+    return statistics.median([e / p for e, p in samples])
 
 
 def detect_scale_info(
@@ -80,6 +91,10 @@ def detect_scale_info(
         calibrated = _calibrate_from_segments(segments, px_per_pdf_point)
         if calibrated is not None:
             info.calibrated_inches_per_pixel = calibrated
-            info.inches_per_pixel = calibrated
-            info.source = "calibrated"
+            # Only override the OCR/default scale when calibration is within 3×;
+            # otherwise the calibration is likely corrupted by bad dimension data.
+            ratio = calibrated / inches_per_pixel
+            if 0.33 <= ratio <= 3.0:
+                info.inches_per_pixel = calibrated
+                info.source = "calibrated"
     return info

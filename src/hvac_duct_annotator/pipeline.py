@@ -373,13 +373,21 @@ def _room_zones(native_text):
 
 
 def _segment_zone(seg, zones, x_split=None):
+    """
+    Assign a named zone to the segment based on proximity to room labels.
+
+    Expansion is intentionally small (±60 pts) so that zones don't bleed
+    across the drawing and misclassify ducts in neighbouring rooms.
+    The "scullery" label for example is very close to the duct-rich kitchen/
+    service area; a wide expansion would incorrectly capture most segments.
+    """
     mx = (seg.bbox.x0 + seg.bbox.x1) / 2
     my = (seg.bbox.y0 + seg.bbox.y1) / 2
     for name, b in zones.items():
-        x0 = b.x0 - 180
-        y0 = b.y0 - 120
-        x1 = b.x1 + 180
-        y1 = b.y1 + 120
+        x0 = b.x0 - 60
+        y0 = b.y0 - 60
+        x1 = b.x1 + 60
+        y1 = b.y1 + 60
         if x0 <= mx <= x1 and y0 <= my <= y1:
             return name
     if x_split is not None and mx >= x_split:
@@ -408,53 +416,78 @@ def _is_long_vertical(seg):
 def _segments_for_visual_output(segments, native_text):
     """
     Keep only stable, human-meaningful duct runs for drawing overlay.
-    This avoids clutter from micro-segments and uncertain detections.
+
+    Layout reference (page.rect = 2592 × 1728 PDF pts after rotation):
+      - Drawing area: x ∈ [280, 1750], y ∈ [200, 1580]
+      - Left border lines (gridline artifacts): x < 280
+      - Notes / title block: y > 1580 or x > 1750
     """
     zones = _room_zones(native_text)
-    if segments:
-        x_split = min(s.bbox.x1 for s in segments) + 0.58 * (
-            max(s.bbox.x1 for s in segments) - min(s.bbox.x0 for s in segments)
-        )
-    else:
-        x_split = None
     out = []
     for s in segments:
-        if s.kind.value != "rect":
+        if s.kind.value != "rect" or len(s.centerline) < 2:
             continue
-        if len(s.centerline) < 2:
-            continue
-        # Reject long vertical overlays in final rendering to avoid gridline artifacts.
-        if _is_long_vertical(s):
-            continue
-        zone = _segment_zone(s, zones, x_split=x_split)
 
-        # Whitelist: long horizontal dining trunks (high-priority expected geometry).
-        if zone == "dining" and _is_long_horizontal(s) and s.confidence >= 0.25:
+        a, b = s.centerline[0], s.centerline[-1]
+        dx = abs(b.x - a.x)
+        dy = abs(b.y - a.y)
+        mx = (s.bbox.x0 + s.bbox.x1) / 2
+        my = (s.bbox.y0 + s.bbox.y1) / 2
+
+        # Hard exclusion: left/right border and bottom notes / title-block area.
+        if mx < 280 or mx > 1750:
+            continue
+        if my > 1580:
+            continue
+
+        # Reject ONLY border/grid vertical lines (left margin x < 350).
+        # Real vertical duct trunks are in x 900–1400 range and must be kept.
+        is_vertical = dy > 80 and dx < max(8, 0.12 * dy)
+        if is_vertical and mx < 350:
+            continue
+
+        zone = _segment_zone(s, zones)
+        has_dim = s.dimensions is not None
+        pdf_len = s.pixel_length or 0  # pixel_length is stored in PDF pts
+
+        # Noisy rooms: only well-labelled, high-confidence segments pass.
+        if zone in {"freezer", "cooler"}:
+            if has_dim and s.confidence >= 0.65:
+                out.append(s)
+            continue
+
+        # Dining zone: relaxed — important horizontal trunk rescue.
+        if zone == "dining":
+            if has_dim and s.confidence >= 0.40:
+                out.append(s)
+                continue
+            if _is_long_horizontal(s) and s.confidence >= 0.30 and pdf_len >= 40:
+                out.append(s)
+            continue
+
+        # Right-side rescue: canonical my > 1100 puts the segment in the
+        # dining / corridor region (far-right in the rendered landscape view).
+        # Accept long horizontal runs even without a dimension label; they
+        # are almost certainly supply trunks leading to the dining area.
+        if my > 1100 and _is_long_horizontal(s) and s.confidence >= 0.30 and pdf_len >= 50:
             out.append(s)
             continue
 
-        # Room-aware adaptive thresholds.
-        min_len = 28
-        min_conf = 0.35
-        min_geom = 0.55
-        if zone in {"kitchen", "scullery", "freezer", "cooler"}:
-            min_len = 35
-            min_conf = 0.60
-            min_geom = 0.78
-        elif zone == "dining":
-            min_len = 20
-            min_conf = 0.22
-            min_geom = 0.40
-
-        if s.pixel_length < min_len:
-            continue
-        if s.pixel_width is not None and s.pixel_width < 6:
-            continue
-        if s.confidence < min_conf:
-            continue
-        if s.geom_score < min_geom and s.dimensions is None and not _is_long_horizontal(s):
-            continue
-        out.append(s)
+        # General drawing area (kitchen, scullery, other):
+        if has_dim:
+            # Labelled segment: keep if the dimension is consistent with the
+            # measured pixel width (high consistency_score = reliable match),
+            # OR if overall confidence is sufficiently high.
+            keep = (
+                (s.consistency_score >= 0.50 and pdf_len >= 10)
+                or (s.confidence >= 0.50 and pdf_len >= 10)
+            )
+            if keep:
+                out.append(s)
+        else:
+            # Unlabelled segment: only show long, high-confidence trunks.
+            if s.confidence >= 0.55 and pdf_len >= 80:
+                out.append(s)
     return out
 
 

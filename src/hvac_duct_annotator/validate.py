@@ -23,8 +23,10 @@ def _consistency_score(seg: DuctSegment, inches_per_pixel: float) -> float:
 def apply_validation(segments: list[DuctSegment], inches_per_pixel: float, threshold: float = 0.75) -> None:
     for seg in segments:
         seg.consistency_score = _consistency_score(seg, inches_per_pixel)
-        # geom_score can be set earlier by detect.py; fallback to confidence.
-        seg.geom_score = max(seg.geom_score, min(1.0, seg.confidence))
+        # Preserve detect.py geom_score (hatch quality signal).  Only fall
+        # back to confidence when geom_score was never set (0.0).
+        if seg.geom_score <= 0.0:
+            seg.geom_score = min(1.0, seg.confidence)
         seg.ocr_score = seg.label.confidence if seg.label is not None else 0.0
         seg.confidence = (
             0.45 * seg.geom_score

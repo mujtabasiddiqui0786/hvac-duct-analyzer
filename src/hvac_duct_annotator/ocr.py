@@ -126,35 +126,80 @@ def run_ocr_near_segments(
     image_bgr: np.ndarray,
     segments: list[DuctSegment],
     px_per_pdf_point: float,
+    tile_size: int = 320,
+    tile_overlap: int = 48,
+    ocr_scale: float = 2.0,
 ) -> list[OCRToken]:
+    """
+    Scan the drawing region in tiles instead of once per segment.
+    Each tile is upscaled by *ocr_scale* before OCR so that small duct-dimension
+    labels (≈10-14 px tall at 120 DPI) fill enough pixels for EasyOCR to read.
+
+    Speed vs accuracy trade-offs:
+      tile_size=320, ocr_scale=2.0  →  effective 640-px tiles  ≈ 20-30 tiles total
+      vs. the original per-segment approach (≈1372 OCR crops).
+    """
+    if not segments:
+        return []
+
     gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
     reader = OCRReader()
-    tokens: list[OCRToken] = []
     h, w = gray.shape[:2]
     z = px_per_pdf_point
-    for seg in segments:
-        cx = int(((seg.bbox.x0 + seg.bbox.x1) / 2) * z)
-        cy = int(((seg.bbox.y0 + seg.bbox.y1) / 2) * z)
-        rad = max(
-            45,
-            int(max((seg.bbox.x1 - seg.bbox.x0) * z, (seg.bbox.y1 - seg.bbox.y0) * z) * 0.8),
-        )
-        x0 = max(0, cx - rad)
-        y0 = max(0, cy - rad)
-        x1 = min(w, cx + rad)
-        y1 = min(h, cy + rad)
-        roi = gray[y0:y1, x0:x1]
-        if roi.size == 0:
-            continue
-        for tok in reader.read(roi):
-            tokens.append(
-                OCRToken(
-                    text=tok.text,
-                    confidence=tok.confidence,
-                    bbox=(tok.bbox[0] + x0, tok.bbox[1] + y0, tok.bbox[2] + x0, tok.bbox[3] + y0),
+
+    # Union bbox of all segments with margin.
+    margin = int(tile_size * 0.4)
+    all_x0 = max(0, int(min(s.bbox.x0 for s in segments) * z) - margin)
+    all_y0 = max(0, int(min(s.bbox.y0 for s in segments) * z) - margin)
+    all_x1 = min(w, int(max(s.bbox.x1 for s in segments) * z) + margin)
+    all_y1 = min(h, int(max(s.bbox.y1 for s in segments) * z) + margin)
+
+    step = tile_size - tile_overlap
+    scale = float(ocr_scale)
+    raw_tokens: list[OCRToken] = []
+
+    ty = all_y0
+    while ty < all_y1:
+        tx = all_x0
+        while tx < all_x1:
+            tx1 = min(tx + tile_size, all_x1)
+            ty1 = min(ty + tile_size, all_y1)
+            roi = gray[ty:ty1, tx:tx1]
+            if roi.size == 0:
+                tx += step
+                continue
+            # Upscale for better OCR accuracy on small labels.
+            roi_up = cv2.resize(roi, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+            for tok in reader.read(roi_up):
+                # Map upscaled coordinates back to original pixel space.
+                bx0 = tok.bbox[0] / scale + tx
+                by0 = tok.bbox[1] / scale + ty
+                bx1 = tok.bbox[2] / scale + tx
+                by1 = tok.bbox[3] / scale + ty
+                raw_tokens.append(
+                    OCRToken(text=tok.text, confidence=tok.confidence, bbox=(bx0, by0, bx1, by1))
                 )
-            )
-    return tokens
+            tx += step
+        ty += step
+
+    # Deduplicate: same text at nearly the same position (within 10 px).
+    seen: list[OCRToken] = []
+    for tok in raw_tokens:
+        cx = (tok.bbox[0] + tok.bbox[2]) / 2
+        cy = (tok.bbox[1] + tok.bbox[3]) / 2
+        dup = False
+        for prev in seen:
+            if prev.text != tok.text:
+                continue
+            pcx = (prev.bbox[0] + prev.bbox[2]) / 2
+            pcy = (prev.bbox[1] + prev.bbox[3]) / 2
+            if abs(cx - pcx) < 10 and abs(cy - pcy) < 10:
+                dup = True
+                break
+        if not dup:
+            seen.append(tok)
+
+    return seen
 
 
 def assign_dimensions_from_labels(
