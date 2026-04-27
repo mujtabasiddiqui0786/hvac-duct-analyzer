@@ -58,6 +58,9 @@ Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
 - `associate.py`: assign labels to segments.
 - `measure.py`: calculate feet/inches.
 - `annotate.py`: output annotated PDF + reports.
+- `propagate.py`: propagate dimensions over collinear continuity.
+- `validate.py`: composite confidence + review flags.
+- `symbols.py`: symbol anchor detection for supply/return logic.
 
 ## Testing
 
@@ -70,3 +73,30 @@ If your sample PDF is in a different location, set:
 ```bash
 export HVAC_SAMPLE_PDF="/absolute/path/to/testset2.pdf"
 ```
+
+### Accuracy harness
+
+```bash
+python3 examples/evaluate_accuracy.py
+```
+
+For real precision/recall, populate `tests/fixtures/ground_truth.json -> segments` with fully-labeled ducts.
+
+### Review corrections API
+
+After a web job is complete, you can import manual fixes:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/jobs/<job_id>/corrections" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "corrections":[
+      {"id":"D-0007","classification":"supply","review_required":false,"review_reason":"approved manually"}
+    ]
+  }'
+```
+
+## OCR dependency note (`_lzma` missing)
+
+If you see `OCR disabled due to missing module dependency: No module named '_lzma'`, your Python build is missing stdlib lzma support.
+The app now tries a `pytesseract` fallback when EasyOCR initialization fails; for best results, use a Python build with lzma enabled.

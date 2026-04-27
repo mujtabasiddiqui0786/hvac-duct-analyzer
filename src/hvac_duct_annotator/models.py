@@ -62,6 +62,11 @@ class DuctSegment(BaseModel):
     length: LengthInfo | None = None
     classification: DuctClass = DuctClass.UNCLASSIFIED
     confidence: float = 0.0
+    geom_score: float = 0.0
+    ocr_score: float = 0.0
+    consistency_score: float = 0.0
+    review_required: bool = False
+    review_reason: str | None = None
 
 
 class ScaleInfo(BaseModel):
@@ -77,3 +82,4 @@ class AnnotationReport(BaseModel):
     scale: ScaleInfo
     segments: list[DuctSegment] = Field(default_factory=list)
     summary: dict[str, int] = Field(default_factory=dict)
+    review_queue_count: int = 0

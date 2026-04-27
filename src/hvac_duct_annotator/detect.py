@@ -74,7 +74,15 @@ def filter_duct_candidates(
             continue
         fft_score = _fft_hatch_score(gray)
         hough_score = _hough_density_score(gray)
-        seg.confidence = max(seg.confidence, min(1.0, 0.55 * fft_score + 0.45 * hough_score))
-        if fft_score >= 1.05 or hough_score >= 0.22 or seg.pixel_width and seg.pixel_width > 12:
+        # High directional FFT/Hough means likely hatch noise.
+        hatch_prob = min(1.0, 0.55 * fft_score + 0.45 * hough_score)
+        # Keep geom_score semantics stable for downstream code: high == good segment.
+        seg.geom_score = 1.0 - hatch_prob
+        seg.confidence = max(seg.confidence, 0.6 * seg.confidence + 0.4 * seg.geom_score)
+
+        is_hatched = fft_score >= 1.05 or hough_score >= 0.60
+        has_real_width = seg.pixel_width is not None and seg.pixel_width > 8
+        # Pass non-hatched or strong-width candidates; drop hatch-noise-only rectangles.
+        if has_real_width or not is_hatched:
             filtered.append(seg)
     return filtered

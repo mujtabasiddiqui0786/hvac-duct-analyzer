@@ -25,7 +25,8 @@ def _auto_drawing_bbox(image_bgr: np.ndarray) -> tuple[int, int, int, int]:
     x0 = int(0.03 * w)
     y0 = int(0.05 * h)
     x1 = int(0.90 * w)
-    y1 = int(0.70 * h)
+    # Keep nearly full sheet height; downstream logic handles note/title filtering.
+    y1 = int(0.98 * h)
     return x0, y0, x1, y1
 
 

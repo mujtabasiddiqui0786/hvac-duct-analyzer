@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from hvac_duct_annotator.models import DuctClass, DuctKind, DuctSegment
+from hvac_duct_annotator.symbols import SymbolAnchor
 
 
 def enrich_round_ducts_with_hough(
@@ -58,6 +59,34 @@ def classify_segments_by_diffuser_adjacency(segments: list[DuctSegment], diffuse
                 best = dtype
         if best is None:
             continue
+        if best in {"A", "B"}:
+            seg.classification = DuctClass.SUPPLY
+        elif best == "C":
+            seg.classification = DuctClass.RETURN
+        elif best == "F":
+            seg.classification = DuctClass.EXHAUST
+
+
+def classify_with_symbol_anchors(segments: list[DuctSegment], anchors: list[SymbolAnchor]) -> None:
+    """
+    Upgrade path: use generic symbol anchors (A/B/C/F + equipment) with
+    nearest-neighbor routing heuristic.
+    """
+    typed = [a for a in anchors if a.kind in {"A", "B", "C", "F"}]
+    if not typed:
+        return
+    for seg in segments:
+        sx = (seg.bbox.x0 + seg.bbox.x1) / 2
+        sy = (seg.bbox.y0 + seg.bbox.y1) / 2
+        best = None
+        best_d = 1e18
+        for anchor in typed:
+            ax = (anchor.bbox.x0 + anchor.bbox.x1) / 2
+            ay = (anchor.bbox.y0 + anchor.bbox.y1) / 2
+            d = (sx - ax) ** 2 + (sy - ay) ** 2
+            if d < best_d:
+                best_d = d
+                best = anchor.kind
         if best in {"A", "B"}:
             seg.classification = DuctClass.SUPPLY
         elif best == "C":
