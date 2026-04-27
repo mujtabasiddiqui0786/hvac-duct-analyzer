@@ -11,6 +11,12 @@ Python toolkit to detect, measure, and annotate HVAC ductwork from mechanical pl
 - JSON and CSV output reports.
 - CLI and FastAPI web UI.
 
+
+## Sample Video
+
+- https://www.loom.com/share/59e00be4807847b9be0b0a64124a10a9
+
+
 ## Install
 
 ```bash
