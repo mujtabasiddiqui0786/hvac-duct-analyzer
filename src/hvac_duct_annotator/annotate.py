@@ -22,10 +22,7 @@ def _label_text(seg: DuctSegment) -> str:
 
 
 def _color_for_class(cls: DuctClass) -> tuple[float, float, float]:
-    if cls == DuctClass.RETURN:
-        return (0.9, 0.2, 0.2)
-    if cls == DuctClass.EXHAUST:
-        return (0.25, 0.7, 0.25)
+    # Match expected sample style: blue duct overlays.
     return (0.10, 0.45, 0.85)
 
 
